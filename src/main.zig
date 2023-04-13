@@ -47,19 +47,19 @@ fn interpret(memory: []u8, prog: []const u8) !void {
 }
 
 fn fuck() !void {
-    var memory = [_]u8{0} ** memorySize;
+    comptime var memory = [_]u8{0} ** memorySize;
     memory[0] = 44;
     memory[1] = 42;
     std.debug.print("adding {} and {}\n", .{ memory[0], memory[1] });
 
     // Adding memory[0] and memory[1] and store the result in memory[1]
     const prog = "[->+<]";
-    try interpret(&memory, prog);
+    try comptime interpret(&memory, prog);
 
     // FIXME: we can't call `std.testing.expectEqual` at comptime since it in turn
     // calls `std.debug.print`, which acquires lock for `stderr`, which calls into
     // pthread, which is an external library, gg.
-    try std.testing.expect(memory[1] == 86);
+    comptime try std.testing.expect(memory[1] == 86);
     std.debug.print("result: {}\n", .{memory[1]});
 }
 

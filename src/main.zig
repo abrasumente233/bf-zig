@@ -85,17 +85,53 @@ fn Loop3Times(comptime func: fn () callconv(.Inline) void) type {
     };
 }
 
-fn StraightLineCodeEmitter(comptime prog: []const u8) type {
+fn StraightLineCodeEmitter(comptime prog: []const u8, comptime start_ii: u32) type {
     return struct {
-        inline fn emit(memory: []u8) void {
-            comptime var ii: u32 = 0;
+        inline fn emit(memory: []u8, dp: *u32) void {
+            const stdin = std.io.getStdIn().reader(); // FIXME: lock?
+            comptime var ii: u32 = start_ii;
             inline while (ii < prog.len) : (ii += 1) {
                 const inst = prog[ii];
                 switch (inst) {
-                    '+' => memory[0] += 1,
-                    '.' => print("{}", .{memory[0]}),
+                    '>' => dp.* += 1,
+                    '<' => dp.* -= 1,
+                    '+' => memory[dp.*] += 1,
+                    '-' => memory[dp.*] -= 1,
+                    '.' => print("{s}", .{[1]u8{memory[0]}}),
+                    ',' => memory[dp.*] = stdin.readByte() catch @panic("stdin.readByte() failed"),
+                    '[' => {
+                        LoopEmitter(prog, ii + 1).emit(memory, dp);
+
+                        // now that we've emitted the loop body,
+                        // set `ii` to `]` and continue emitting
+                        // the straight line code afterwards.
+                        // TODO: make this faster
+                        comptime var depth: u32 = 1;
+                        inline while (depth != 0) {
+                            ii += 1;
+                            const c0 = prog[ii];
+                            if (c0 == '[') {
+                                depth += 1;
+                            } else if (c0 == ']') {
+                                depth -= 1;
+                            }
+                        }
+                        //@compileLog("ii: ", ii);
+                    },
+                    ']' => return, // FIXME: this is completely wrong and only for 1 level deep loop
                     else => @compileError("unknown instruction: `" ++ [1]u8{inst} ++ "`"),
                 }
+            }
+        }
+    };
+}
+
+fn LoopEmitter(comptime prog: []const u8, comptime start_ii: u32) type {
+    return struct {
+        inline fn emit(memory: []u8, dp: *u32) void {
+            comptime var ii: u32 = start_ii;
+            while (memory[dp.*] != 0) {
+                StraightLineCodeEmitter(prog, ii).emit(memory, dp);
             }
         }
     };
@@ -105,7 +141,15 @@ pub fn main() !void {
     // try fuck();
 
     var memory = [_]u8{0} ** memorySize;
+    memory[1] = 8;
+    memory[0] = 4;
+    var dp: u32 = 0; // data pointer
     // const prog = "[->+<]";
-    const prog = "+++.";
-    StraightLineCodeEmitter(prog).emit(&memory);
+    //const prog = "+++.";
+    const prog = "[->+<]";
+    //const prog = "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.";
+    //const prog = "[-]";
+    // const prog = "[-]";
+    StraightLineCodeEmitter(prog, 0).emit(&memory, &dp);
+    print("{}", .{memory[1]});
 }

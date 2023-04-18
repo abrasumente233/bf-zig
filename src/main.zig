@@ -1,20 +1,22 @@
 const std = @import("std");
+const print = std.debug.print;
 
 const memorySize = 1024 * 1024; // 1 MiB
 
-fn interpret(memory: []u8, prog: []const u8) !void {
+fn interpret(memory: []u8, comptime prog: []const u8) !void {
     const stdin = std.io.getStdIn().reader();
-    var ip: u32 = 0; // instruction pointer
-    var dp: u32 = 0; // data pointer
+    comptime var ii: u32 = 0; // instruction index for codegen
+    var ip: u32 = 0; // instruction pointer at runtime
+    var dp: u32 = 0; // data pointer at runtime
 
-    while (ip != prog.len) {
-        const c = prog[ip];
+    inline while (ii != prog.len) : (ii += 1) {
+        const c = prog[ii];
         switch (c) {
             '>' => dp += 1,
             '<' => dp -= 1,
             '+' => memory[dp] += 1,
             '-' => memory[dp] -= 1,
-            '.' => std.debug.print("{}", .{memory[dp]}),
+            '.' => print("{}", .{memory[dp]}),
             ',' => memory[dp] = try stdin.readByte(),
             '[' => if (memory[dp] == 0) {
                 var depth: u32 = 1;
@@ -47,22 +49,50 @@ fn interpret(memory: []u8, prog: []const u8) !void {
 }
 
 fn fuck() !void {
-    comptime var memory = [_]u8{0} ** memorySize;
+    var memory = [_]u8{0} ** memorySize;
     memory[0] = 44;
     memory[1] = 42;
-    std.debug.print("adding {} and {}\n", .{ memory[0], memory[1] });
+    print("adding {} and {}\n", .{ memory[0], memory[1] });
 
     // Adding memory[0] and memory[1] and store the result in memory[1]
     const prog = "[->+<]";
-    try comptime interpret(&memory, prog);
+    try interpret(&memory, prog);
 
     // FIXME: we can't call `std.testing.expectEqual` at comptime since it in turn
     // calls `std.debug.print`, which acquires lock for `stderr`, which calls into
     // pthread, which is an external library, gg.
-    comptime try std.testing.expect(memory[1] == 86);
-    std.debug.print("result: {}\n", .{memory[1]});
+    try std.testing.expectEqual(memory[1], 86);
+    print("result: {}\n", .{memory[1]});
+}
+
+fn Func(comptime factor: i32) type {
+    return struct {
+        inline fn process() void {
+            print("once: {}\n", .{2 * factor});
+        }
+    };
+}
+
+fn Loop3Times(comptime func: fn () callconv(.Inline) void) type {
+    return struct {
+        inline fn execute_loop(counter: *u32) void {
+            comptime var i = 0;
+            inline while (i < 3) : (i += 1) {
+                counter.* += 1;
+                _ = func();
+            }
+        }
+    };
 }
 
 pub fn main() !void {
-    try fuck();
+    // try fuck();
+    //print("lotus loves tornado: {}\n", .{Func(518).process(2)});
+    var counter: u32 = 0;
+    const ptr = &counter;
+    ptr.* += 1;
+    print("counter: {}\n", .{counter});
+    //Loop3Times(Loop3Times(Func(44).process).execute_loop).execute_loop();
+    Loop3Times(Func(44).process).execute_loop(&counter);
+    print("counter: {}\n", .{counter});
 }

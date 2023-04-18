@@ -105,6 +105,7 @@ pub fn main() !void {
     // try fuck();
 
     var memory = [_]u8{0} ** memorySize;
-    const prog = "[->+<]";
+    // const prog = "[->+<]";
+    const prog = "+++.";
     StraightLineCodeEmitter(prog).emit(&memory);
 }

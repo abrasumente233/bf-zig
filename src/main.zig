@@ -97,28 +97,31 @@ fn StraightLineCodeEmitter(comptime prog: []const u8, comptime start_ii: u32) ty
                     '<' => dp.* -= 1,
                     '+' => memory[dp.*] += 1,
                     '-' => memory[dp.*] -= 1,
-                    '.' => print("{s}", .{[1]u8{memory[0]}}),
+                    '.' => print("{s}", .{[1]u8{memory[dp.*]}}),
                     ',' => memory[dp.*] = stdin.readByte() catch @panic("stdin.readByte() failed"),
                     '[' => {
-                        LoopEmitter(prog, ii + 1).emit(memory, dp);
-
-                        // now that we've emitted the loop body,
-                        // set `ii` to `]` and continue emitting
-                        // the straight line code afterwards.
+                        // find the matching ]
                         // TODO: make this faster
+                        comptime var end_ii = ii;
                         comptime var depth: u32 = 1;
                         inline while (depth != 0) {
-                            ii += 1;
-                            const c0 = prog[ii];
+                            end_ii += 1;
+                            const c0 = prog[end_ii];
                             if (c0 == '[') {
                                 depth += 1;
                             } else if (c0 == ']') {
                                 depth -= 1;
                             }
                         }
-                        //@compileLog("ii: ", ii);
+
+                        LoopEmitter(prog[0..end_ii], ii + 1).emit(memory, dp);
+
+                        // now that we've emitted the loop body,
+                        // set `ii` to `]` and continue emitting
+                        // the straight line code afterwards.
+                        ii = end_ii;
                     },
-                    ']' => return, // FIXME: this is completely wrong and only for 1 level deep loop
+                    //']' => return, // FIXME: this is completely wrong and only for 1 level deep loop
                     else => @compileError("unknown instruction: `" ++ [1]u8{inst} ++ "`"),
                 }
             }
@@ -141,15 +144,16 @@ pub fn main() !void {
     // try fuck();
 
     var memory = [_]u8{0} ** memorySize;
-    memory[1] = 8;
-    memory[0] = 4;
     var dp: u32 = 0; // data pointer
     // const prog = "[->+<]";
     //const prog = "+++.";
-    const prog = "[->+<]";
-    //const prog = "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.";
+    //const prog = "[->+<]";
+    const prog = "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.";
+    //const prog = "+++++[-]";
+    //const prog = ">+++++++++[<++++++++>-]<.>+++++++[<++++>-]<+.+++++++..+++.[-]>++++++++[<++++>-]<.>+++++++++++[<++++++++>-]<-.--------.+++.------.--------.[-]>++++++++[<++++>-]<+.[-]++++++++++.";
+    //const prog = ">+++++++++[<++++++++>-]<.";
+    //const prog = "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]";
     //const prog = "[-]";
     // const prog = "[-]";
     StraightLineCodeEmitter(prog, 0).emit(&memory, &dp);
-    print("{}", .{memory[1]});
 }

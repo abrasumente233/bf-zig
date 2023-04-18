@@ -85,14 +85,26 @@ fn Loop3Times(comptime func: fn () callconv(.Inline) void) type {
     };
 }
 
+fn StraightLineCodeEmitter(comptime prog: []const u8) type {
+    return struct {
+        inline fn emit(memory: []u8) void {
+            comptime var ii: u32 = 0;
+            inline while (ii < prog.len) : (ii += 1) {
+                const inst = prog[ii];
+                switch (inst) {
+                    '+' => memory[0] += 1,
+                    '.' => print("{}", .{memory[0]}),
+                    else => @compileError("unknown instruction: `" ++ [1]u8{inst} ++ "`"),
+                }
+            }
+        }
+    };
+}
+
 pub fn main() !void {
     // try fuck();
-    //print("lotus loves tornado: {}\n", .{Func(518).process(2)});
-    var counter: u32 = 0;
-    const ptr = &counter;
-    ptr.* += 1;
-    print("counter: {}\n", .{counter});
-    //Loop3Times(Loop3Times(Func(44).process).execute_loop).execute_loop();
-    Loop3Times(Func(44).process).execute_loop(&counter);
-    print("counter: {}\n", .{counter});
+
+    var memory = [_]u8{0} ** memorySize;
+    const prog = "[->+<]";
+    StraightLineCodeEmitter(prog).emit(&memory);
 }

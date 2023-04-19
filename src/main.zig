@@ -29,7 +29,9 @@ fn BrainfuckEmitter(comptime prog: []const u8) type {
                             }
                         }
 
-                        LoopEmitter(prog[ii + 1 .. end_ii]).emit(memory, dp, reader, writer);
+                        while (memory[dp.*] != 0) {
+                            BrainfuckEmitter(prog[ii + 1 .. end_ii]).emit(memory, dp, reader, writer);
+                        }
 
                         // now that we've emitted the loop body,
                         // set `ii` to `]` and continue emitting
@@ -37,20 +39,8 @@ fn BrainfuckEmitter(comptime prog: []const u8) type {
                         ii = end_ii;
                     },
                     ']' => unreachable,
-                    // FIXME: allow other characters as comments.
-                    //else => @compileError("unknown instruction: `" ++ [1]u8{inst} ++ "`"),
                     else => {},
                 }
-            }
-        }
-    };
-}
-
-fn LoopEmitter(comptime prog: []const u8) type {
-    return struct {
-        inline fn emit(memory: []u8, dp: *u32, reader: anytype, writer: anytype) void {
-            while (memory[dp.*] != 0) {
-                BrainfuckEmitter(prog).emit(memory, dp, reader, writer);
             }
         }
     };
@@ -73,7 +63,7 @@ inline fn embed_brainfuck_with_io(comptime prog: []const u8, reader: anytype, wr
 }
 
 pub fn main() !void {
-    // const prog = "[->+<]";
+    //const prog = "[->+<]";
     //const prog = "+++.";
     //const prog = "[->+<]";
     //const prog = "+++++[-]";

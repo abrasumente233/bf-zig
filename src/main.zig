@@ -10,8 +10,8 @@ fn BrainfuckEmitter(comptime prog: []const u8) type {
             inline while (ii < prog.len) : (ii += 1) {
                 const inst = prog[ii];
                 switch (inst) {
-                    '>' => dp.* +%= 1,
-                    '<' => dp.* -%= 1,
+                    '>' => dp.* += 1,
+                    '<' => dp.* -= 1,
                     '+' => memory[dp.*] +%= 1,
                     '-' => memory[dp.*] -%= 1,
                     '.' => stdout.print("{s}", .{[1]u8{memory[dp.*]}}) catch unreachable,

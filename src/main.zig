@@ -2,10 +2,8 @@ const std = @import("std");
 
 fn BrainfuckEmitter(comptime prog: []const u8) type {
     return struct {
-        inline fn emit(memory: []u8, dp: *u32) void {
+        inline fn emit(memory: []u8, dp: *u32, reader: anytype, writer: anytype) void {
             @setEvalBranchQuota(1000000);
-            const stdout = std.io.getStdOut().writer();
-            const stdin = std.io.getStdIn().reader(); // FIXME: lock?
             comptime var ii: u32 = 0;
             inline while (ii < prog.len) : (ii += 1) {
                 const inst = prog[ii];
@@ -14,8 +12,8 @@ fn BrainfuckEmitter(comptime prog: []const u8) type {
                     '<' => dp.* -= 1,
                     '+' => memory[dp.*] +%= 1,
                     '-' => memory[dp.*] -%= 1,
-                    '.' => stdout.print("{s}", .{[1]u8{memory[dp.*]}}) catch unreachable,
-                    ',' => memory[dp.*] = stdin.readByte() catch @panic("stdin.readByte() failed"),
+                    '.' => writer.writeByte(memory[dp.*]) catch @panic("writeByte() failed"),
+                    ',' => memory[dp.*] = reader.readByte() catch 0,
                     '[' => {
                         // find the matching ]
                         // TODO: make this faster
@@ -31,7 +29,7 @@ fn BrainfuckEmitter(comptime prog: []const u8) type {
                             }
                         }
 
-                        LoopEmitter(prog[ii + 1 .. end_ii]).emit(memory, dp);
+                        LoopEmitter(prog[ii + 1 .. end_ii]).emit(memory, dp, reader, writer);
 
                         // now that we've emitted the loop body,
                         // set `ii` to `]` and continue emitting
@@ -40,7 +38,8 @@ fn BrainfuckEmitter(comptime prog: []const u8) type {
                     },
                     ']' => unreachable,
                     // FIXME: allow other characters as comments.
-                    else => @compileError("unknown instruction: `" ++ [1]u8{inst} ++ "`"),
+                    //else => @compileError("unknown instruction: `" ++ [1]u8{inst} ++ "`"),
+                    else => {},
                 }
             }
         }
@@ -49,19 +48,34 @@ fn BrainfuckEmitter(comptime prog: []const u8) type {
 
 fn LoopEmitter(comptime prog: []const u8) type {
     return struct {
-        inline fn emit(memory: []u8, dp: *u32) void {
+        inline fn emit(memory: []u8, dp: *u32, reader: anytype, writer: anytype) void {
             while (memory[dp.*] != 0) {
-                BrainfuckEmitter(prog).emit(memory, dp);
+                BrainfuckEmitter(prog).emit(memory, dp, reader, writer);
             }
         }
     };
+}
+
+inline fn embed_brainfuck(comptime prog: []const u8) void {
+    const stdout = std.io.getStdOut().writer();
+    const stdin = std.io.getStdIn().reader();
+    var dp: u32 = 0; // data pointer
+    const memorySize = 1024 * 1024; // 1 MiB
+    var memory = [_]u8{0} ** memorySize;
+    BrainfuckEmitter(prog).emit(&memory, &dp, stdin, stdout);
+}
+
+inline fn embed_brainfuck_with_io(comptime prog: []const u8, reader: anytype, writer: anytype) void {
+    var dp: u32 = 0; // data pointer
+    const memorySize = 1024 * 1024; // 1 MiB
+    var memory = [_]u8{0} ** memorySize;
+    BrainfuckEmitter(prog).emit(&memory, &dp, reader, writer);
 }
 
 pub fn main() !void {
     // const prog = "[->+<]";
     //const prog = "+++.";
     //const prog = "[->+<]";
-    //const prog = "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.";
     //const prog = "+++++[-]";
     //const prog = ">+++++++++[<++++++++>-]<.>+++++++[<++++>-]<+.+++++++..+++.[-]>++++++++[<++++>-]<.>+++++++++++[<++++++++>-]<-.--------.+++.------.--------.[-]>++++++++[<++++>-]<+.[-]++++++++++.";
     //const prog = ">+++++++++[<++++++++>-]<.";
@@ -73,11 +87,17 @@ pub fn main() !void {
     //const prog = ",[.,]"; // cat
     //const prog = ">,[>++++++[-<-------->]>+++++++++[-<<<[->+>+<<]>>[-<<+>>]>]<<[-<+>],]>+<<[->>[>]<[[->+>+<<]<]>>[[-<+>]>]<<[<]<]>+++++++[-<+++++++>]<.----->>[>]<-<[[<]<.>>[>]<[->+<]>[>>>>++++++++++<<<<[->+>>+>-[<-]<[->>+<<<<[->>>+<<<]>]<<]>+[-<+>]>>>[-]>[-<<<<+>>>>]<<<<]<[>++++++[<++++++++>-]<-.[-]<]<]";
     //const prog = ">>>>++>+>++>+>>++<+[[>[>>[>>>>]<<<<[[>>>>+<<<<-]<<<<]>>>>>>]+<]>->>--[+[+++<<<<--]++>>>>--]+[>>>>]<<<<[<<+<+<]<<[>>>>>>[[<<<<+>>>>-]>>>>]<<<<<<<<[<<<<]>>-[<<+>>-]+<<[->>>>[-[+>>>>-]-<<-[>>>>-]++>>+[-<<<<+]+>>>>]<<<<[<<<<]]>[-[<+>-]]+<[->>>>[-[+>>>>-]-<<<-[>>>>-]++>>>+[-<<<<+]+>>>>]<<<<[<<<<]]<<]>>>+[>>>>]-[+<<<<--]++[<<<<]>>>+[>-[>>[--[++>>+>>--]-<[-[-[+++<<<<-]+>>>>-]]++>+[-<<<<+]++>>+>>]<<[>[<-<<<]+<]>->>>]+>[>>>>]-[+<<<<--]++<[[>>>>]<<<<[-[+>[<->-]++<[[>-<-]++[<<<<]+>>+>>-]++<<<<-]>-[+[<+[<<<<]>]<+>]+<[->->>>[-]]+<<<<]]>[<<<<]>[-[-[+++++[>++++++++<-]>-.>>>-[<<<----.<]<[<<]>>[-]>->>+[[>>>>]+[-[->>>>+>>>>>>>>-[-[+++<<<<[-]]+>>>>-]++[<<<<]]+<<<<]>>>]+<+<<]>[-[->[--[++>>>>--]->[-[-[+++<<<<-]+>>>>-]]++<+[-<<<<+]++>>>>]<<<<[>[<<<<]+<]>->>]<]>>>>[--[++>>>>--]-<--[+++>>>>--]+>+[-<<<<+]++>>>>]<<<<<[<<<<]<]>[>+<<++<]<]>[+>[--[++>>>>--]->--[+++>>>>--]+<+[-<<<<+]++>>>>]<<<[<<<<]]>>]>]";
-    const prog = ">>>>++>+>++>+>>++<+[[>[>>[>>>>]<<<<[[>>>>+<<<<-]<<<<]>>>>>>]+<]>->>--[+[+++<<<<--]++>>>>--]+[>>>>]<<<<[<<+<+<]<<[>>>>>>[[<<<<+>>>>-]>>>>]<<<<<<<<[<<<<]>>-[<<+>>-]+<<[->>>>[-[+>>>>-]-<<-[>>>>-]++>>+[-<<<<+]+>>>>]<<<<[<<<<]]>[-[<+>-]]+<[->>>>[-[+>>>>-]-<<<-[>>>>-]++>>>+[-<<<<+]+>>>>]<<<<[<<<<]]<<]>>>+[>>>>]-[+<<<<--]++[<<<<]>>>+[>-[>>[--[++>>+>>--]-<[-[-[+++<<<<-]+>>>>-]]++>+[-<<<<+]++>>+>>]<<[>[<-<<<]+<]>->>>]+>[>>>>]-[+<<<<--]++<[[>>>>]<<<<[-[+>[<->-]++<[[>-<-]++[<<<<]+>>+>>-]++<<<<-]>-[+[<+[<<<<]>]<+>]+<[->->>>[-]]+<<<<]]>[<<<<]>[-[-[+++++[>++++++++<-]>-.>>>-[<<<----.<]<[<<]>>[-]>->>+[[>>>>]+[-[->>>>+>>>>>>>>-[-[+++<<<<[-]]+>>>>-]++[<<<<]]+<<<<]>>>]+<+<<]>[-[->[--[++>>>>--]->[-[-[+++<<<<-]+>>>>-]]++<+[-<<<<+]++>>>>]<<<<[>[<<<<]+<]>->>]<]>>>>[--[++>>>>--]-<--[+++>>>>--]+>+[-<<<<+]++>>>>]<<<<<[<<<<]<]>[>+<<++<]<]>[+>[--[++>>>>--]->--[+++>>>>--]+<+[-<<<<+]++>>>>]<<<[<<<<]]>>]>]";
+    //const prog = ">>>>++>+>++>+>>++<+[[>[>>[>>>>]<<<<[[>>>>+<<<<-]<<<<]>>>>>>]+<]>->>--[+[+++<<<<--]++>>>>--]+[>>>>]<<<<[<<+<+<]<<[>>>>>>[[<<<<+>>>>-]>>>>]<<<<<<<<[<<<<]>>-[<<+>>-]+<<[->>>>[-[+>>>>-]-<<-[>>>>-]++>>+[-<<<<+]+>>>>]<<<<[<<<<]]>[-[<+>-]]+<[->>>>[-[+>>>>-]-<<<-[>>>>-]++>>>+[-<<<<+]+>>>>]<<<<[<<<<]]<<]>>>+[>>>>]-[+<<<<--]++[<<<<]>>>+[>-[>>[--[++>>+>>--]-<[-[-[+++<<<<-]+>>>>-]]++>+[-<<<<+]++>>+>>]<<[>[<-<<<]+<]>->>>]+>[>>>>]-[+<<<<--]++<[[>>>>]<<<<[-[+>[<->-]++<[[>-<-]++[<<<<]+>>+>>-]++<<<<-]>-[+[<+[<<<<]>]<+>]+<[->->>>[-]]+<<<<]]>[<<<<]>[-[-[+++++[>++++++++<-]>-.>>>-[<<<----.<]<[<<]>>[-]>->>+[[>>>>]+[-[->>>>+>>>>>>>>-[-[+++<<<<[-]]+>>>>-]++[<<<<]]+<<<<]>>>]+<+<<]>[-[->[--[++>>>>--]->[-[-[+++<<<<-]+>>>>-]]++<+[-<<<<+]++>>>>]<<<<[>[<<<<]+<]>->>]<]>>>>[--[++>>>>--]-<--[+++>>>>--]+>+[-<<<<+]++>>>>]<<<<<[<<<<]<]>[>+<<++<]<]>[+>[--[++>>>>--]->--[+++>>>>--]+<+[-<<<<+]++>>>>]<<<[<<<<]]>>]>]";
 
-    const memorySize = 1024 * 1024; // 1 MiB
-    var memory = [_]u8{0} ** memorySize;
-    var dp: u32 = 0; // data pointer
+    const content = @embedFile("sierpinski.bf");
+    embed_brainfuck(content);
+}
 
-    BrainfuckEmitter(prog).emit(&memory, &dp);
+test "hello world" {
+    const prog = "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.";
+    var out = [_]u8{0} ** 1024;
+    var outbuf = std.io.fixedBufferStream(&out);
+    embed_brainfuck_with_io(prog, undefined, outbuf.writer());
+    const expected = "Hello World!";
+    try std.testing.expectEqualStrings(expected, outbuf.buffer[0..expected.len]);
 }
